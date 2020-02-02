@@ -2,7 +2,9 @@
 
 import sys, os, subprocess
 import json, datetime, glob
+import basics
 
+ubuntu_v = 0
 
 def backup_apt():
     cmd = """comm -23 <(apt-mark showmanual | sort -u) <(gzip -dc /var/log/installer/initial-status.gz | sed -n 's/^Package: //p' | sort -u)"""
@@ -16,7 +18,7 @@ def backup_apt():
         i += 1
     apt = {}
     apt["app"] = "apt-get"
-    apt["arg"] = "install"
+    apt["ins"] = "install"
     apt["src"] = output
     return apt
 
@@ -28,8 +30,15 @@ def backup_pip():
         if len(output[0]) == 0:
             return None
         pip["app"] = "pip"
-        pip["arg"] = "install"
+        pip["ins"] = "install"
         pip["src"] = output
+        del pip["src"][0]
+        del pip["src"][0]
+        del pip["src"][-1]
+        for x in range(len(pip["src"])):
+            split = pip["src"][x].split(" ")
+            result = list(filter(lambda x: (x != ''), split))
+            pip["src"][x] = result[0] + "==" + result[1]
         return pip
     else:
         print('pip not installed')
@@ -40,24 +49,22 @@ def backup_pip3():
         pip3 = {}
         cmd = "pip3 list --user"
         output = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, executable="/bin/bash").stdout.read().decode().split('\n')
+        if len(output[0]) == 0:
+            return None
         pip3["app"] = "pip3"
-        pip3["arg"] = "install"
+        pip3["ins"] = "install"
         pip3["src"] = output
         del pip3["src"][0]
         del pip3["src"][0]
         del pip3["src"][-1]
         for x in range(len(pip3["src"])):
-            a = pip3["src"][x].split(" ")[0]
-            b = pip3["src"][x].split(" ")[-1]
-            print(pip3["src"][x].split(" "))
-            pip3["src"][x] = a + "==" + b
-
-filter(lambda a: a != 2, x)
-
+            split = pip3["src"][x].split(" ")
+            result = list(filter(lambda x: (x != ''), split))
+            pip3["src"][x] = result[0] + "==" + result[1]
         return pip3
     else:
         print('pip3 not installed')
-    return "None"
+    return None
 
 def backup():
     backup = {}
@@ -82,15 +89,31 @@ def restore(name, version):
         if data:
             for package in data["src"]:
                 if package and version == 0:
-                    print(f'sudo {data["app"]} {data["arg"]} {package.split("=")[0]}')
+                    print(f'{data["sup"]} {data["app"]} {data["ins"]} {package.split("=")[0]}')
                 elif package and version == 1:
-                    print(f'sudo {data["app"]} {data["arg"]} {package}')
+                    print(f'{data["sup"]} {data["app"]} {data["ins"]} {package}')
     
 
-
+def detect_ubuntu_version(version):
+    global ubuntu_v
+    cmd = "lsb_release -d | grep '18'"
+    output = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, executable="/bin/bash").stdout.read().decode()
+    if (output != ''):
+        ubuntu_v = 18
+        return
+    cmd = "lsb_release -d | grep '19'"
+    output = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, executable="/bin/bash").stdout.read().decode()
+    if (output != ''):
+        ubuntu_v = 19
+        return
+    if ubuntu_v == 0:
+        print(f"{basics.bcolors.FAIL}{basics.ERROR}{basics.bcolors.ENDC}")
+    exit(1)
 
 
 def main():
+    detect_ubuntu_version(0)
+    print(f'Ubuntu_version={ubuntu_v}')
     if sys.argv[1] == "--backup" or sys.argv[1] == "-b":
         main_json = {}
         if len(sys.argv) == 2:
@@ -109,22 +132,13 @@ def main():
             restore("", 0)
     elif sys.argv[1] == "--restore-version" or sys.argv[1] == "-rv":
         restore("", 1)
-
     else:
-        usage()
-
-def usage():
-    print("\nUsage")
-    print("   myApp <command> [options]\n")
-    print("Commands\n   -b, --backup [output_json_name]\t\tsave system configurationin ouput file [name]")
-    print("   -r, --restore [input_json_name]\t\trestore from last file, or file defined by his name")
-    print("   -v, --version \t\t\t\tdisplay EasyPizi version\n")
-    exit(0)
+        basics.usage()
 
 
 if __name__ == "__main__":
     if len(sys.argv) == 1 or (len(sys.argv) == 2 and (sys.argv[1] == "--help" or sys.argv[1] == "-h")):
-        print(usage())
+        print(basics.usage())
     elif sys.argv[1] == "--version" or sys.argv[1] == "-v":
         print("EasyPizi Alpha 0.0.1")
         exit(0)
