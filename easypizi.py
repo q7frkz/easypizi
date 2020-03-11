@@ -4,7 +4,20 @@ import sys, os, subprocess
 import json, datetime, glob
 import basics
 
+from os import listdir
+from os.path import isfile, join
+
 ubuntu_v = 0
+
+def backup_rep():
+    cmd = "cat /etc/apt/sources.list | grep -v '#' | grep -v 'ubuntu.com'"
+    output = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, executable="/bin/bash").stdout.read().decode().split('\n')
+    output = list(filter(lambda a: a != '', output))
+    cmd = "cat /etc/apt/sources.list.d/*.list | grep -v '#'"
+    sources = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, executable="/bin/bash").stdout.read().decode().split('\n')
+    sources = list(filter(lambda a: a != '', sources))
+    sources += output
+    return sources
 
 def backup_apt():
     cmd = """comm -23 <(apt-mark showmanual | sort -u) <(gzip -dc /var/log/installer/initial-status.gz | sed -n 's/^Package: //p' | sort -u)"""
@@ -17,6 +30,7 @@ def backup_apt():
         output[i] = output[i][:-1]
         i += 1
     apt = {}
+    apt["sup"] = "sudo"
     apt["app"] = "apt-get"
     apt["ins"] = "install"
     apt["src"] = output
@@ -29,6 +43,7 @@ def backup_pip():
         output = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, executable="/bin/bash").stdout.read().decode().split('\n')
         if len(output[0]) == 0:
             return None
+        pip["sup"] = ""
         pip["app"] = "pip"
         pip["ins"] = "install"
         pip["src"] = output
@@ -51,6 +66,7 @@ def backup_pip3():
         output = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, executable="/bin/bash").stdout.read().decode().split('\n')
         if len(output[0]) == 0:
             return None
+        pip3["sup"] = ""
         pip3["app"] = "pip3"
         pip3["ins"] = "install"
         pip3["src"] = output
@@ -68,6 +84,7 @@ def backup_pip3():
 
 def backup():
     backup = {}
+    backup["rep"] = backup_rep()
     backup["apt"] = backup_apt()
     backup["pip"] = backup_pip()
     backup["pip3"] = backup_pip3()
@@ -87,11 +104,18 @@ def restore(name, version):
         exit(0)
     for (name, data) in restore_json["backup"].items():
         if data:
-            for package in data["src"]:
-                if package and version == 0:
-                    print(f'{data["sup"]} {data["app"]} {data["ins"]} {package.split("=")[0]}')
-                elif package and version == 1:
-                    print(f'{data["sup"]} {data["app"]} {data["ins"]} {package}')
+            if name == "rep":
+                cmd = f'echo "\n\n# Easypizi Restore" | sudo tee -a /etc/apt/sources.list'
+                subprocess.call(cmd, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                for repo in data:
+                    cmd = f'echo {repo} | sudo tee -a /etc/apt/sources.list'
+                    subprocess.call(cmd, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            else:
+                for package in data["src"]:
+                    if package and version == 0:
+                        print(f'{data["sup"]} {data["app"]} {data["ins"]} {package.split("=")[0]}')
+                    elif package and version == 1:
+                        print(f'{data["sup"]} {data["app"]} {data["ins"]} {package}')
     
 
 def detect_ubuntu_version(version):
